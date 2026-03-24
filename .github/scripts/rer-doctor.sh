@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# rer-doctor.sh (v0.2)
+# rer-doctor.sh (v0.2.2)
 # RER Doctor — Read-only governance health check
-# - Detects governance drift via gov-diff
-# - Notifies on VIOLATION only
+#
+# Features:
+# - Wraps gov-diff.sh (single source of truth)
+# - Classifies OK / WARNING / VIOLATION
+# - Fork-aware: no secrets, no notifications, no failures
+# - Notifies via GitHub Issue on VIOLATION (trusted contexts only)
 # - Auto-closes issue when violations return to 0
+#
 # NEVER mutates governance state.
+# Phase-2 safe. Phase-3 compliant.
 
 set -euo pipefail
 
@@ -14,6 +20,7 @@ set -euo pipefail
 ORG="${ORG:-}"
 REPOS_ALLOWLIST="${REPOS_ALLOWLIST:-}"
 GH_TOKEN="${GH_TOKEN:-}"
+GITHUB_TOKEN_FALLBACK="${GITHUB_TOKEN:-}"
 
 REPO_SLUG="${GITHUB_REPOSITORY:-}"
 GITHUB_API_URL="${GITHUB_API_URL:-https://api.github.com}"
@@ -25,23 +32,36 @@ ISSUE_TITLE="🚨 Governance Violation Detected"
 ISSUE_LABELS="governance,violation"
 
 # -------------------------
-# Guards
+# Guards (minimal)
 # -------------------------
 [[ -z "${ORG}" ]] && { echo "ERROR: ORG is required"; exit 2; }
-if [[ -z "${GH_TOKEN}" ]]; then
-  echo "INFO: GH_TOKEN not available (likely forked PR)."
-  echo "INFO: Running RER Doctor in read-only, no-notification mode."
-  NOTIFY_DISABLED=1
-else
-  NOTIFY_DISABLED=0
-fi
 [[ -z "${REPO_SLUG}" ]] && { echo "ERROR: GITHUB_REPOSITORY is required"; exit 2; }
 
 command -v curl >/dev/null || { echo "ERROR: curl not found"; exit 2; }
-command -v jq >/dev/null || { echo "ERROR: jq not found"; exit 2; }
+command -v jq   >/dev/null || { echo "ERROR: jq not found"; exit 2; }
 
 # -------------------------
-# Helpers
+# Fork awareness & token handling
+# -------------------------
+if [[ -z "${GH_TOKEN}" ]]; then
+  echo "INFO: GH_TOKEN not available (likely forked PR)."
+  echo "INFO: Running RER Doctor in read-only, no-notification mode."
+  FORK_MODE=1
+
+  if [[ -n "${GITHUB_TOKEN_FALLBACK}" ]]; then
+    echo "INFO: Falling back to GITHUB_TOKEN (read-only)."
+    GH_TOKEN="${GITHUB_TOKEN_FALLBACK}"
+    export GH_TOKEN
+  else
+    echo "ERROR: No GitHub token available for read-only operations."
+    exit 2
+  fi
+else
+  FORK_MODE=0
+fi
+
+# -------------------------
+# API helper (read/write depends on token)
 # -------------------------
 api() {
   local method="$1"; shift
@@ -62,11 +82,14 @@ api() {
   fi
 }
 
+# -------------------------
+# Issue helpers (trusted contexts only)
+# -------------------------
 find_open_issue() {
   local resp
   resp="$(api GET "repos/${REPO_SLUG}/issues?state=open&per_page=100")"
 
-  # If response is not a JSON array, silently treat as "no issue"
+  # If response is not an array (e.g., permission error), treat as no issue
   if ! echo "${resp}" | jq -e 'type == "array"' >/dev/null 2>&1; then
     return 0
   fi
@@ -125,9 +148,9 @@ DIFF_OUTPUT="$(mktemp)"
 trap 'rm -f "${DIFF_OUTPUT}"' EXIT
 
 # -------------------------
-# Run
+# Run gov-diff (read-only)
 # -------------------------
-echo "=== RER Doctor v0.2 ==="
+echo "=== RER Doctor v0.2.2 ==="
 echo "ORG=${ORG}"
 echo "REPO=${REPO_SLUG}"
 echo
@@ -169,11 +192,17 @@ done < "${DIFF_OUTPUT}"
 echo "OK=${ok} WARNING=${warn} VIOLATION=${violation}"
 
 # -------------------------
-# Notify / Auto-close
+# Fork mode: never notify, never fail
 # -------------------------
-if [[ "${violation}" -gt 0 && "${NOTIFY_DISABLED}" -ne 1 ]]; then
-  close_issue_if_open
+if [[ "${FORK_MODE}" -eq 1 ]]; then
+  echo "INFO: Fork mode active — notifications and failure disabled."
+  exit 0
 fi
+
+# -------------------------
+# Trusted contexts: notify / auto-close
+# -------------------------
+if [[ "${violation}" -gt 0 ]]; then
   issue_body="$(cat <<EOF
 ## 🚨 Governance Violation Detected
 
@@ -194,7 +223,6 @@ EOF
   create_or_update_issue "${issue_body}"
   exit 20
 else
-  # No violations → auto-close if issue exists
   close_issue_if_open
   [[ "${warn}" -gt 0 ]] && exit 10 || exit 0
 fi
