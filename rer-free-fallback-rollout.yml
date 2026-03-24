@@ -1,0 +1,53 @@
+name: RER Free Fallback Rollout (v0.6)
+
+on:
+  workflow_dispatch:
+    inputs:
+      org:
+        description: "Organization login (e.g., my-org)"
+        required: true
+      default_branch:
+        description: "Default branch name"
+        required: true
+        default: "main"
+      release_tag_patterns:
+        description: "Comma-separated tag patterns to protect (e.g., v*.*.*)"
+        required: true
+        default: "v*.*.*"
+      repos_allowlist:
+        description: "Space or comma separated repos (empty = all non-archived)"
+        required: false
+      dry_run:
+        description: "Preview only (true/false)"
+        required: true
+        default: "true"
+
+concurrency:
+  group: rer-free-fallback-rollout
+  cancel-in-progress: false
+
+jobs:
+  rollout:
+    runs-on: ubuntu-latest
+    # The job does not rely on GITHUB_TOKEN permissions; it uses ORG_ADMIN_TOKEN.
+    permissions:
+      contents: read
+    env:
+      ORG: ${{ inputs.org }}
+      DEFAULT_BRANCH: ${{ inputs.default_branch }}
+      TAG_PATTERNS: ${{ inputs.release_tag_patterns }}
+      REPOS_ALLOWLIST: ${{ inputs.repos_allowlist }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+      # Optional override for GHES; default to api.github.com if unset.
+      GITHUB_API_URL: https://api.github.com
+
+    steps:
+      - name: Checkout repo (v0.6)
+        uses: actions/checkout@v4
+
+      - name: Run rollout (v0.6)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/rer-free-fallback-rollout.sh
