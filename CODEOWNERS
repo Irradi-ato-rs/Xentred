@@ -1,1 +1,27 @@
+# ------------------------------------------------------------
+# CODEOWNERS
+#
+# CODEOWNERS provide review visibility only.
+# They do NOT grant merge rights or bypass enforcement.
+#
+# All changes remain gated exclusively by `rexce/validate`.
+# ------------------------------------------------------------
 
+# Default: GovOps authority has visibility on all changes
+* @irradi-ato-rs/govops
+
+# Governance definition and adoption artifacts
+/GOVERNANCE-ADOPTION.md        @irradi-ato-rs/govops
+/.github/governance/           @irradi-ato-rs/govops
+
+# Governance reference documentation
+/README.md                     @irradi-ato-rs/govops
+/SECURITY.md                   @irradi-ato-rs/govops
+
+# Governance enforcement wiring (visibility only)
+/.github/workflows/            @irradi-ato-rs/govops
+
+# Phase-3 observability tooling
+/gov-diff.sh                   @irradi-ato-rs/govops
+/rer-doctor.sh                 @irradi-ato-rs/govops
+``
