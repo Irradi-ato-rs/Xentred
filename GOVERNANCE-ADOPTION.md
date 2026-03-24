@@ -1,6 +1,6 @@
 # Governance Adoption
 
-> **Canonical entry point for adopting Irradi.ato.rs GovOps governance**
+> **Canonical entry point for adopting Irradi.ato.rs GovOps--governance operations**
 
 This document defines **how an external repository or organization may intentionally adopt governance**
 provided by the **Irradi.ato.rs GovOps system**, implemented through **rexce**, **Xcectua**, and the
