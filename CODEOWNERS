@@ -4,6 +4,8 @@
 # CODEOWNERS provide review visibility only.
 # They do NOT grant merge rights or bypass enforcement.
 #
+# You must read Irradi-ato-rs/govops DISCLAIMER.
+#
 # All changes remain gated exclusively by `rexce/validate`.
 # ------------------------------------------------------------
 
