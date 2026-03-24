@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# rer-doctor.sh (v0.1)
-# RER Doctor — Read-only governance health check with violation notifications.
-# Wraps gov-diff.sh, applies classification, and notifies on VIOLATION only.
-# NEVER mutates repo governance state.
+# rer-doctor.sh (v0.2)
+# RER Doctor — Read-only governance health check
+# - Detects governance drift via gov-diff
+# - Notifies on VIOLATION only
+# - Auto-closes issue when violations return to 0
+# NEVER mutates governance state.
 
 set -euo pipefail
 
@@ -13,7 +15,6 @@ ORG="${ORG:-}"
 REPOS_ALLOWLIST="${REPOS_ALLOWLIST:-}"
 GH_TOKEN="${GH_TOKEN:-}"
 
-# Repo slug is needed for issue creation (assumes running in repo context)
 REPO_SLUG="${GITHUB_REPOSITORY:-}"
 GITHUB_API_URL="${GITHUB_API_URL:-https://api.github.com}"
 
@@ -55,26 +56,51 @@ api() {
   fi
 }
 
+find_open_issue() {
+  api GET "repos/${REPO_SLUG}/issues?state=open&per_page=100" \
+    | jq -r ".[] | select(.title == \"${ISSUE_TITLE}\") | .number" \
+    | head -n 1
+}
+
 create_or_update_issue() {
   local body="$1"
+  local issue_number
 
-  # Find existing open issue with the same title
-  local existing
-  existing="$(api GET "repos/${REPO_SLUG}/issues?state=open&per_page=100" \
-    | jq -r ".[] | select(.title == \"${ISSUE_TITLE}\") | .number" | head -n 1)"
+  issue_number="$(find_open_issue)"
 
-  if [[ -n "${existing}" ]]; then
-    echo "Updating existing governance violation issue #${existing}"
-    api PATCH "repos/${REPO_SLUG}/issues/${existing}" \
+  if [[ -n "${issue_number}" ]]; then
+    echo "Updating governance violation issue #${issue_number}"
+    api PATCH "repos/${REPO_SLUG}/issues/${issue_number}" \
       "$(jq -n --arg body "${body}" '{body:$body}')" >/dev/null
   else
-    echo "Creating new governance violation issue"
+    echo "Creating governance violation issue"
     api POST "repos/${REPO_SLUG}/issues" \
       "$(jq -n \
         --arg title "${ISSUE_TITLE}" \
         --arg body "${body}" \
         --arg labels "${ISSUE_LABELS}" \
         '{title:$title, body:$body, labels:($labels|split(","))}')" >/dev/null
+  fi
+}
+
+close_issue_if_open() {
+  local issue_number
+  issue_number="$(find_open_issue)"
+
+  if [[ -n "${issue_number}" ]]; then
+    echo "Closing resolved governance violation issue #${issue_number}"
+
+    api POST "repos/${REPO_SLUG}/issues/${issue_number}/comments" \
+      "$(jq -n --arg body \
+        "✅ Governance violations resolved.
+
+All Phase‑2 invariants are currently satisfied.
+
+Timestamp: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" \
+        '{body:$body}')" >/dev/null
+
+    api PATCH "repos/${REPO_SLUG}/issues/${issue_number}" \
+      "$(jq -n '{state:"closed"}')" >/dev/null
   fi
 }
 
@@ -87,7 +113,7 @@ trap 'rm -f "${DIFF_OUTPUT}"' EXIT
 # -------------------------
 # Run
 # -------------------------
-echo "=== RER Doctor v0.1 ==="
+echo "=== RER Doctor v0.2 ==="
 echo "ORG=${ORG}"
 echo "REPO=${REPO_SLUG}"
 echo
@@ -96,56 +122,40 @@ export ORG
 export REPOS_ALLOWLIST
 export GH_TOKEN
 
-# Run the governance diff (read-only)
 bash .github/scripts/gov-diff.sh > "${DIFF_OUTPUT}"
 
 # -------------------------
-# Classification counters
+# Classification
 # -------------------------
 ok=0
 warn=0
 violation=0
 current_repo=""
 
-# -------------------------
-# Classify output
-# -------------------------
 while IFS= read -r line; do
-  # Repo header lines look like: --- ORG/repo ---
   if [[ "${line}" =~ ^---\ (.+)/(.+)\ ---$ ]]; then
     current_repo="${BASH_REMATCH[2]}"
     continue
   fi
 
   if [[ "${line}" =~ \[OK\] ]]; then
-    echo "[OK] ${current_repo}"
     ok=$((ok+1))
     continue
   fi
 
-  # Any diff block implies WARNING or VIOLATION.
-  # Heuristic aligned with Phase-3 classification:
-  # - Required check missing/extra
-  # - strict/admins_enforced issues => VIOLATION
   if grep -q '"missing"\|"extra"' <<<"${line}"; then
     if grep -q 'rexce/validate\|strict\|admins_enforced' <<<"${line}"; then
-      echo "[VIOLATION] ${current_repo}"
       violation=$((violation+1))
     else
-      echo "[WARNING] ${current_repo}"
       warn=$((warn+1))
     fi
   fi
 done < "${DIFF_OUTPUT}"
 
-echo
-echo "=== RER Doctor Summary ==="
-echo "OK=${ok}"
-echo "WARNING=${warn}"
-echo "VIOLATION=${violation}"
+echo "OK=${ok} WARNING=${warn} VIOLATION=${violation}"
 
 # -------------------------
-# Notify on VIOLATION only
+# Notify / Auto-close
 # -------------------------
 if [[ "${violation}" -gt 0 ]]; then
   issue_body="$(cat <<EOF
@@ -162,13 +172,13 @@ if [[ "${violation}" -gt 0 ]]; then
 - ⚠️ WARNING: ${warn}
 - ❌ VIOLATION: ${violation}
 
-Please investigate and remediate via a **Governance Change Proposal (GCP)**.
+Remediation must proceed via a **Governance Change Proposal (GCP)**.
 EOF
 )"
   create_or_update_issue "${issue_body}"
   exit 20
-elif [[ "${warn}" -gt 0 ]]; then
-  exit 10
 else
-  exit 0
+  # No violations → auto-close if issue exists
+  close_issue_if_open
+  [[ "${warn}" -gt 0 ]] && exit 10 || exit 0
 fi
