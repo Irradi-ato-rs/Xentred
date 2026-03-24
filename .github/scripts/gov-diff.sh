@@ -15,7 +15,16 @@ GITHUB_API_URL="${GITHUB_API_URL:-https://api.github.com}"
 GH_TOKEN="${GH_TOKEN:-}"
 
 [[ -z "$ORG" ]] && { echo "ERROR: ORG is required"; exit 2; }
-[[ -z "$GH_TOKEN" ]] && { echo "ERROR: GH_TOKEN is required"; exit 2; }
+if [[ -z "${GH_TOKEN}" ]]; then
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    echo "INFO: GH_TOKEN not available; falling back to GITHUB_TOKEN (read-only)."
+    GH_TOKEN="${GITHUB_TOKEN}"
+    export GH_TOKEN
+  else
+    echo "ERROR: No GitHub token available (GH_TOKEN or GITHUB_TOKEN)."
+    exit 2
+  fi
+fi
 
 req() { command -v "$1" >/dev/null || { echo "ERROR: $1 missing"; exit 2; }; }
 req curl
