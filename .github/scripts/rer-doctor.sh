@@ -63,7 +63,15 @@ api() {
 }
 
 find_open_issue() {
-  api GET "repos/${REPO_SLUG}/issues?state=open&per_page=100" \
+  local resp
+  resp="$(api GET "repos/${REPO_SLUG}/issues?state=open&per_page=100")"
+
+  # If response is not a JSON array, silently treat as "no issue"
+  if ! echo "${resp}" | jq -e 'type == "array"' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "${resp}" \
     | jq -r ".[] | select(.title == \"${ISSUE_TITLE}\") | .number" \
     | head -n 1
 }
