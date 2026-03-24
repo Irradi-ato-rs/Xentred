@@ -28,7 +28,13 @@ ISSUE_LABELS="governance,violation"
 # Guards
 # -------------------------
 [[ -z "${ORG}" ]] && { echo "ERROR: ORG is required"; exit 2; }
-[[ -z "${GH_TOKEN}" ]] && { echo "ERROR: GH_TOKEN is required"; exit 2; }
+if [[ -z "${GH_TOKEN}" ]]; then
+  echo "INFO: GH_TOKEN not available (likely forked PR)."
+  echo "INFO: Running RER Doctor in read-only, no-notification mode."
+  NOTIFY_DISABLED=1
+else
+  NOTIFY_DISABLED=0
+fi
 [[ -z "${REPO_SLUG}" ]] && { echo "ERROR: GITHUB_REPOSITORY is required"; exit 2; }
 
 command -v curl >/dev/null || { echo "ERROR: curl not found"; exit 2; }
@@ -157,7 +163,9 @@ echo "OK=${ok} WARNING=${warn} VIOLATION=${violation}"
 # -------------------------
 # Notify / Auto-close
 # -------------------------
-if [[ "${violation}" -gt 0 ]]; then
+if [[ "${violation}" -gt 0 && "${NOTIFY_DISABLED}" -ne 1 ]]; then
+  close_issue_if_open
+fi
   issue_body="$(cat <<EOF
 ## 🚨 Governance Violation Detected
 
