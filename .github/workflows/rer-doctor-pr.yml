@@ -1,0 +1,45 @@
+name: RER Doctor (PR signal)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # comment only
+    env:
+      ORG: Irradi-ato-rs
+      GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+
+      - name: Run RER Doctor
+        shell: bash
+        run: |
+          bash .github/scripts/rer-doctor.sh | tee doctor.out
+
+      - name: Prepare PR comment
+        shell: bash
+        run: |
+          {
+            echo "## 🩺 RER Doctor — Governance Health"
+            echo
+            echo "\`\`\`"
+            cat doctor.out
+            echo "\`\`\`"
+            echo
+            echo "_This is a read-only governance signal. It does not block merges._"
+          } > comment.md
+
+      - name: Post / update PR comment
+        shell: bash
+        run: |
+          bash .github/scripts/rer-doctor-comment.sh comment.md
