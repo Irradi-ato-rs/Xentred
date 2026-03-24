@@ -1,0 +1,24 @@
+name: RER Doctor (read-only)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"  # daily UTC
+
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      ORG: Irradi-ato-rs
+      GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
+
+      - name: Run RER Doctor
+        shell: bash
+        run: |
+          bash .github/scripts/rer-doctor.sh
