@@ -1,0 +1,9 @@
+name: rexce-validate
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  rexce:
+    uses: Irradi-ato-rs/rexce/.github/workflows/rexce-validation.yml@main
