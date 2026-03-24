@@ -3,7 +3,7 @@ name: RER Free Fallback Rollout (v0.9)
 on:
   workflow_dispatch:
     inputs:
-      org: Irradi-ato-rs
+      org:
         description: "Organization login"
         required: true
         type: string
