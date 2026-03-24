@@ -109,6 +109,8 @@ Operational questions should reference:
 
 > **CODEOWNERS route review visibility only; governance enforcement is performed exclusively by `rexce/validate` and cannot be overridden by human approval.**
 
+# DISCLAIMER is available at Irradi-ato-rs/govops.
+
 ---
 
 **End of README.**
