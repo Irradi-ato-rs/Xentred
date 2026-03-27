@@ -7,141 +7,24 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
+  issues: write
 
 jobs:
   governance-diff:
-    name: Classify Governance Changes (GCP Preparation)
+    name: Classify Governance Diff
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Xentred
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      ######################################################################
-      # ✅ Capture the diff (PR range)
-      ######################################################################
-      - name: Compute governance diff
-        id: diff
-        run: |
-          set -euo pipefail
-          mkdir -p govdiff
+      - name: Run governance diff
+        run: bash .github/scripts/xentred-governance-diff.sh
 
-          BASE="${{ github.event.pull_request.base.sha }}"
-          HEAD="${{ github.event.pull_request.head.sha }}"
-
-          echo "[GCP] Base: $BASE"
-          echo "[GCP] Head: $HEAD"
-
-          git diff --name-only "$BASE" "$HEAD" > govdiff/FILES_CHANGED.txt
-          git diff "$BASE" "$HEAD" > govdiff/UNIFIED.diff
-
-          echo "files=$(cat govdiff/FILES_CHANGED.txt | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
-
-      ######################################################################
-      # ✅ Classification logic (non-enforcing; Phase‑3 only)
-      #
-      # We classify changes into:
-      # 1. Contract changes              → requires Phase‑2 → Phase‑3 GCP
-      # 2. Circuit template changes      → requires GCP (Phase‑3)
-      # 3. Evidence boundary changes     → requires GCP (Phase‑2 boundary freeze)
-      # 4. Workflow changes              → allowed but must be reviewed
-      # 5. Metadata / documentation      → low‑risk
-      ######################################################################
-      - name: Classify governance impact
-        id: classify
-        run: |
-          set -euo pipefail
-          mkdir -p govdiff
-
-          CONTRACT_FILES=""
-          CIRCUIT_FILES=""
-          EVIDENCE_FILES=""
-          WORKFLOW_FILES=""
-          DOC_FILES=""
-          OTHER_FILES=""
-
-          while read -r f; do
-            case "$f" in
-              contract/*|contract-templates/*)
-                CONTRACT_FILES="$CONTRACT_FILES$f ";;
-              circuits/rer/pdr/evidence-dirs.txt)
-                EVIDENCE_FILES="$EVIDENCE_FILES$f ";;
-              circuits/rer/evidence/*|circuits/rer/workflows/*|circuits/rer/CODEOWNERS|circuits/rer/rer.lock.yml)
-                CIRCUIT_FILES="$CIRCUIT_FILES$f ";;
-              .github/workflows/*)
-                WORKFLOW_FILES="$WORKFLOW_FILES$f ";;
-              *.md|docs/*|README*|pdr/README.md)
-                DOC_FILES="$DOC_FILES$f ";;
-              *)
-                OTHER_FILES="$OTHER_FILES$f ";;
-            esac
-          done < govdiff/FILES_CHANGED.txt
-
-          {
-            echo "# Governance Diff Classification"
-            echo
-            echo "## ✅ Contract Changes"
-            echo "${CONTRACT_FILES:-<none>}"
-            echo
-            echo "## ✅ Evidence Boundary Changes"
-            echo "${EVIDENCE_FILES:-<none>}"
-            echo
-            echo "## ✅ Circuit Template Changes"
-            echo "${CIRCUIT_FILES:-<none>}"
-            echo
-            echo "## ✅ Workflow Changes"
-            echo "${WORKFLOW_FILES:-<none>}"
-            echo
-            echo "## ✅ Documentation / Metadata Changes"
-            echo "${DOC_FILES:-<none>}"
-            echo
-            echo "## ✅ Other Changes"
-            echo "${OTHER_FILES:-<none>}"
-          } > govdiff/CLASSIFICATION.md
-
-          echo "classification=$(cat govdiff/CLASSIFICATION.md | sed ':a;N;$!ba;s/\n/|/g')" >> "$GITHUB_OUTPUT"
-
-      ######################################################################
-      # ✅ Summary Markdown (for PR reviewers & GovOps)
-      ######################################################################
-      - name: Generate PR-ready summary
-        id: summary
-        run: |
-          set -euo pipefail
-          cat > govdiff/SUMMARY.md <<EOF
-# 🧩 Governance Diff Summary
-
-This PR modifies governance-sensitive areas of Xentred.
-
-## 📁 Files Changed
-\`\`\`
-$(cat govdiff/FILES_CHANGED.txt)
-\`\`\`
-
-## 🔎 Classified Governance Impact
-$(cat govdiff/CLASSIFICATION.md)
-
-## 📄 Full Diff
-See attached artifact: \`UNIFIED.diff\`
-
-This report supports **GCP (Governance Change Proposal)** evaluation.
-EOF
-
-      ######################################################################
-      # ✅ Upload artifacts (for auditors & GovOps)
-      ######################################################################
-      - name: Upload governance diff artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: xentred-governance-diff-${{ github.run_id }}
           path: govdiff/
-          retention-days: 14
-
-      ######################################################################
-      # ✅ Completion
-      ######################################################################
-      - name: ✅ Done
-        run: echo "Governance diff report generated."
