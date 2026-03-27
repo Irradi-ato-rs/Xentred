@@ -10,128 +10,15 @@ permissions:
   contents: read
 
 jobs:
-  drift-report:
-    name: Generate Governance Drift Report
+  drift:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Xentred
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      ######################################################################
-      # ✅ Canonical File Inventory (expected structure)
-      # These are the authoritative RER circuit scaffolds that must never drift
-      ######################################################################
-      - name: Record expected canonical inventory
-        id: expected
-        run: |
-          set -euo pipefail
-          mkdir -p drift
-          cat > drift/EXPECTED.txt <<'EOF'
-circuits/rer/
-circuits/rer/CODEOWNERS
-circuits/rer/rer.lock.yml
+      - name: Run drift report
+        run: bash .github/scripts/xentred-drift-report.sh
 
-circuits/rer/evidence/
-circuits/rer/evidence/release/
-circuits/rer/evidence/sbom/
-circuits/rer/evidence/provenance/
-circuits/rer/evidence/inventory/
-
-circuits/rer/pdr/evidence-dirs.txt
-circuits/rer/pdr/README.md
-
-circuits/rer/workflows/rer-governance-gate.yml
-EOF
-
-      ######################################################################
-      # ✅ Capture current repo inventory (actual state)
-      ######################################################################
-      - name: Generate actual inventory
-        id: actual
-        run: |
-          set -euo pipefail
-          mkdir -p drift
-          git ls-tree -r --name-only HEAD > drift/ACTUAL.txt
-
-      ######################################################################
-      # ✅ Compare expected vs actual (drift detection)
-      ######################################################################
-      - name: Detect drift
-        id: detect
-        run: |
-          set -euo pipefail
-          mkdir -p drift
-
-          diff -u drift/EXPECTED.txt drift/ACTUAL.txt > drift/STRUCTURE.diff || true
-
-          echo "Detected drift difference (if any):"
-          cat drift/STRUCTURE.diff || true
-
-      ######################################################################
-      # ✅ Full tree SHA summary (canonical fingerprinting)
-      ######################################################################
-      - name: Compute tree hashes
-        run: |
-          set -euo pipefail
-          mkdir -p drift
-          find circuits/rer -type f -print0 \
-            | xargs -0 sha256sum \
-            | sort -k2 \
-            > drift/HASHES.sha256
-
-      ######################################################################
-      # ✅ Generate markdown drift report
-      ######################################################################
-      - name: Generate drift report markdown
-        run: |
-          set -euo pipefail
-          cat > drift/REPORT.md <<'EOF'
-# Xentred Governance Drift Report
-
-This report captures structural and content drift within the canonical
-**RER circuit** stored in `circuits/rer/`.
-
-## ✅ Expected Structure
-\`\`\`
-$(cat drift/EXPECTED.txt)
-\`\`\`
-
-## ✅ Actual Structure
-\`\`\`
-$(cat drift/ACTUAL.txt)
-\`\`\`
-
-## ✅ Structure Diff (Expected vs Actual)
-\`\`\`diff
-$(cat drift/STRUCTURE.diff)
-\`\`\`
-
-## ✅ SHA256 Fingerprints of Canonical Files
-\`\`\`
-$(cat drift/HASHES.sha256)
-\`\`\`
-
-### Interpretation
-
-- ✅ If the **structure diff is empty**, no drift exists.
-- ⚠️ If differences appear, a Governance Change Proposal (GCP) may be required.
-- ❌ Any missing or extra files inside `circuits/rer/` must be addressed immediately,
-  as this repository defines the **authoritative RER circuit template** for all adopters.
-
-EOF
-
-      ######################################################################
-      # ✅ Upload artifact
-      ######################################################################
-      - name: Upload drift report artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: xentred-drift-report-${{ github.run_id }}
           path: drift/
-          retention-days: 14
-
-      - name: ✅ Completed
-        run: echo "Xentred drift report generated."

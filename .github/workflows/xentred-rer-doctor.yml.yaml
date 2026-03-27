@@ -1,0 +1,23 @@
+name: Xentred RER Doctor
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rer-doctor:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run RER Doctor
+        env:
+          ORG: "Irradi-ato-rs"
+          REPOS_ALLOWLIST: "Xentred"
+        run: |
+          bash .github/scripts/rer-doctor.sh
