@@ -1,24 +1,25 @@
 name: Xentred Governance Validation
 
 on:
-  push:
+  pull_request_target:
     branches: ["main"]
-  pull_request:
+  push:
+    branches: ["main"]  # keep push validation for direct commits
 
 permissions:
   contents: read
 
 jobs:
-  validate-governance:
-    name: Validate Xentred Against Canonical Governance Contract
+  validate:
+    name: Run canonical governance validator
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Xentred
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      # ✅ Canonical Phase‑2 validator
       - name: Run rexce validator
-        uses: Irradi-ato-rs/rexce/.github/actions/validate@main
+        uses: Irradi-ato-rs/rexce/.github/workflows/rexce-validation.yml@main

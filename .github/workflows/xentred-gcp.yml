@@ -1,9 +1,8 @@
 name: Xentred GCP Packet
 
 on:
-  pull_request:
+  pull_request_target:
     branches: ["main"]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,16 +11,17 @@ permissions:
 
 jobs:
   gcp:
-    name: Generate GCP Packet
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Build GCP packet
+      - name: Generate GCP packet
         run: bash .github/scripts/xentred-gcp.sh
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload GCP packet
+        uses: actions/upload-artifact@v4
         with:
           name: xentred-gcp-${{ github.run_id }}
           path: gcp/

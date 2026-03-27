@@ -1,9 +1,8 @@
 name: Xentred Governance Diff Classification
 
 on:
-  pull_request:
+  pull_request_target:
     branches: ["main"]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,19 +10,18 @@ permissions:
   issues: write
 
 jobs:
-  governance-diff:
-    name: Classify Governance Diff
+  diff:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Run governance diff
-        run: bash .github/scripts/xentred-governance-diff.sh
+        run: bash .github/scripts/gov-diff.sh
 
-      - name: Upload artifact
+      - name: Upload diff packet
         uses: actions/upload-artifact@v4
         with:
           name: xentred-governance-diff-${{ github.run_id }}

@@ -1,55 +1,49 @@
-name: GovOps GCP Dashboard Generator
+name: GovOps Severity Annotator
 
 on:
-  schedule:
-    - cron: "0 */6 * * *"   # Every 6 hours
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: read
+  contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
-  dashboard:
-    name: Generate GovOps Governance Dashboard
+  annotate:
+    name: Severity Annotator
     runs-on: ubuntu-latest
 
     steps:
+      - name: Skip if token cannot write to this PR
+        if: >
+          github.event.pull_request.head.repo.fork == true &&
+          github.event.pull_request.maintainer_can_modify != true
+        run: |
+          echo "Skipping severity annotation — fork PR has no write permissions."
+          exit 0
+
       - uses: actions/checkout@v4
 
-      - name: Generate dashboard
-        id: dash
+      - name: Load severity
+        id: sev
         run: |
-          set -euo pipefail
+          if [[ -f SEVERITY.txt ]]; then
+            echo "severity=$(cat SEVERITY.txt)" >> $GITHUB_OUTPUT
+          else
+            echo "severity=Unknown" >> $GITHUB_OUTPUT
+          fi
 
-          echo "# 🧭 GovOps GCP Dashboard" > DASHBOARD.md
-          echo "" >> DASHBOARD.md
-          echo "Updated: $(date -u)" >> DASHBOARD.md
-          echo "" >> DASHBOARD.md
+      - name: Post annotation
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### 🔎 Governance Severity Annotation
 
-          echo "## 🟥 P0 — Contract / Boundary Changes" >> DASHBOARD.md
-          gh pr list --label "gcp/p0-critical" --json number,title,author,state,url \
-            | jq -r '.[] | "- [PR #\(.number)](\(.url)) — \(.title) (by @\(.author))"' >> DASHBOARD.md
-          echo "" >> DASHBOARD.md
+            Severity: **${{ steps.sev.outputs.severity }}**
 
-          echo "## 🟧 P1 — Circuit / Workflow Changes" >> DASHBOARD.md
-          gh pr list --label "gcp/p1-high" --json number,title,author,state,url \
-            | jq -r '.[] | "- [PR #\(.number)](\(.url)) — \(.title) (by @\(.author))"' >> DASHBOARD.md
-          echo "" >> DASHBOARD.md
-
-          echo "## 🟨 P2 — Documentation" >> DASHBOARD.md
-          gh pr list --label "gcp/p2-medium" --json number,title,author,state,url \
-            | jq -r '.[] | "- [PR #\(.number)](\(.url)) — \(.title) (by @\(.author))"' >> DASHBOARD.md
-          echo "" >> DASHBOARD.md
-
-          echo "## 🟩 P3 — Low risk / Metadata" >> DASHBOARD.md
-          gh pr list --label "gcp/p3-low" --json number,title,author,state,url \
-            | jq -r '.\(.url) — \(.title) (by @\(.author))"' >> DASHBOARD.md
-
-      - name: Commit dashboard
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add DASHBOARD.md
-          git commit -m "Update GovOps GCP Dashboard" || echo "No changes"
-          git push || echo "No changes to push"
+            Advisory: GovOps does not enforce governance.  
+            Enforcement occurs via **rexce** + **Xcectua**.

@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   gcp-review:
@@ -15,150 +16,50 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout govops
-        uses: actions/checkout@v4
+      - name: Skip if token cannot write to this PR
+        if: >
+          github.event.pull_request.head.repo.fork == true &&
+          github.event.pull_request.maintainer_can_modify != true
+        run: |
+          echo "Skipping GCP Reviewer — fork PR does not grant write permissions."
+          exit 0
+
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      ######################################################################
-      # ✅ Capture PR metadata for human review context
-      ######################################################################
       - name: Capture PR metadata
         id: meta
         run: |
-          set -euo pipefail
           mkdir -p review
           echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
           echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
           echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
           echo "url=${{ github.event.pull_request.html_url }}" >> $GITHUB_OUTPUT
-          echo "base=${{ github.event.pull_request.base.sha }}" >> $GITHUB_OUTPUT
-          echo "head=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
 
-      ######################################################################
-      # ✅ Pull in Xentred governance diff artifacts (if present)
-      ######################################################################
-      - name: Download governance diff artifact (best effort)
-        uses: actions/download-artifact@v4
-        with:
-          name: xentred-governance-diff-${{ github.run_id }}
-        continue-on-error: true
-
-      - name: Fallback artifact discovery
-        if: failure()
+      - name: Load classification + severity
         run: |
-          echo "No prior governance diff artifact found — reviewer must evaluate manually."
-
-      ######################################################################
-      # ✅ Create reviewer guidance packet (non‑enforcing)
-      ######################################################################
-      - name: Generate GovOps GCP Review Packet
-        id: packet
-        run: |
-          set -euo pipefail
           mkdir -p review
+          [[ -f CLASSIFICATION.md ]] && cp CLASSIFICATION.md review/CLASSIFICATION.md || echo "No classification" > review/CLASSIFICATION.md
+          [[ -f SEVERITY.txt ]] && cp SEVERITY.txt review/SEVERITY.txt || echo "Unknown" > review/SEVERITY.txt
 
-          CLASSIFICATION="No classification artifact found"
-          if [[ -f CLASSIFICATION.md ]]; then
-            CLASSIFICATION="$(cat CLASSIFICATION.md)"
-          fi
-
-          SEVERITY="Unknown — No severity info found"
-          if [[ -f SEVERITY.txt ]]; then
-            SEVERITY="$(cat SEVERITY.txt)"
-          fi
-
-          cat > review/GCP_REVIEW.md <<EOF
-# 🧩 GovOps Governance Change Proposal (GCP) Review Packet
-
-**PR #${{ steps.meta.outputs.number }}**  
-Title: *${{ steps.meta.outputs.title }}*  
-Author: @${{ steps.meta.outputs.author }}  
-URL: ${{ steps.meta.outputs.url }}
-
----
-
-## ✅ Summary
-This packet consolidates all governance‑related context for GovOps reviewers.  
-GovOps does **not** enforce governance — it provides *advisory‑only* human review.
-
----
-
-## ✅ Severity (from Xentred Classification)
-${SEVERITY}
-
----
-
-## ✅ Governance Impact Classification
-${CLASSIFICATION}
-
----
-
-## ✅ Required Human Review Checklist
-
-### ✅ For P0 — Contract / Boundary Change
-- [ ] GCP document is present and complete  
-- [ ] Phase‑2 boundary change justification is clear  
-- [ ] Required rexce contract updates exist  
-- [ ] Xcectua propagation implications are understood  
-- [ ] Performance / SLO impacts evaluated  
-
-### ✅ For P1 — Circuit / Workflow Change
-- [ ] Complies with rexce contract  
-- [ ] Template changes remain Phase‑2 safe  
-- [ ] No shadow validator logic introduced  
-- [ ] PDR boundaries fully respected  
-
-### ✅ For P2 — Documentation
-- [ ] Governance impact is minimal or none  
-- [ ] Documentation clarity validated  
-
-### ✅ For P3 — Meta / Other
-- [ ] No hidden governance impacts  
-
----
-
-## ✅ Attached Materials
-
-Includes (if available):
-- \`UNIFIED.diff\`
-- \`FILES_CHANGED.txt\`
-- \`CLASSIFICATION.md\`
-- \`GCP.md\`
-
-EOF
-
-      ######################################################################
-      # ✅ Upload GovOps Review Packet
-      ######################################################################
-      - name: Upload GCP review packet
+      - name: Upload review packet
         uses: actions/upload-artifact@v4
         with:
           name: govops-gcp-review-${{ github.run_id }}
           path: review/
           retention-days: 14
 
-      ######################################################################
-      # ✅ Post PR comment with summary
-      ######################################################################
-      - name: Post GovOps comment to PR
+      - name: Post summary comment
         uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ steps.meta.outputs.number }}
           body: |
-            ### 🧩 GovOps Governance Review Packet Ready
+            ### 🧩 GovOps GCP Review Packet Ready
 
-            A GCP Review Packet for **PR #${{ steps.meta.outputs.number }}** has been generated.
+            Severity: **$(cat review/SEVERITY.txt)**  
+            Classification summary attached (artifact).
 
-            ✅ Severity classification  
-            ✅ Governance‑impact classification  
-            ✅ Human review checklist  
-            ✅ All supporting diff materials  
-            ✅ Artifact attached to this workflow run  
-
-            GovOps does **not** enforce governance —  
-            it provides *advisory validation only*.  
-            Final enforcement always occurs through **rexce** and **Xcectua Phase‑4 automation**.
-
-            Please proceed with human review and record decisions as appropriate.
+            GovOps review is **advisory only**.  
+            Enforcement: **rexce** (Phase‑2) + **Xcectua** (Phase‑4).
