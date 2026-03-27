@@ -16,53 +16,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Skip forks without write permission
+        if: github.event.pull_request.head.repo.fork == true && github.event.pull_request.maintainer_can_modify != true
+        run: |
+          echo "Skipping GCP Reviewer — fork PR has no write permission."
+          exit 0
+
       - name: Checkout govops
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ✅ Skip forks without write permission
-      - name: Skip forks without write permission
-        if: github.event.pull_request.head.repo.fork == true && github.event.pull_request.maintainer_can_modify != true
-        run: |
-          echo "Skipping GovOps GCP Reviewer because fork PR has no write permission."
-          exit 0
-
-      ######################################################################
-      # ✅ Capture PR metadata
-      ######################################################################
       - name: Capture PR metadata
         id: meta
         run: |
-          set -euo pipefail
           mkdir -p review
           echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
           echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
           echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
           echo "url=${{ github.event.pull_request.html_url }}" >> $GITHUB_OUTPUT
-          echo "base=${{ github.event.pull_request.base.sha }}" >> $GITHUB_OUTPUT
-          echo "head=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
 
-      ######################################################################
-      # ✅ Try to load artifacts (non-blocking)
-      ######################################################################
       - name: Download governance diff artifact (best effort)
         uses: actions/download-artifact@v4
         with:
           name: xentred-governance-diff-${{ github.run_id }}
         continue-on-error: true
 
-      - name: Fallback artifact discovery
-        if: failure()
-        run: echo "No prior governance diff artifact found — reviewer must evaluate manually."
-
-      ######################################################################
-      # ✅ Build review packet
-      ######################################################################
       - name: Generate GovOps GCP Review Packet
-        id: packet
         run: |
-          set -euo pipefail
           mkdir -p review
 
           CLASSIFICATION="No classification artifact found"
@@ -70,98 +51,47 @@ jobs:
             CLASSIFICATION="$(cat CLASSIFICATION.md)"
           fi
 
-          SEVERITY="Unknown — No severity info found"
+          SEVERITY="Unknown"
           if [[ -f SEVERITY.txt ]]; then
             SEVERITY="$(cat SEVERITY.txt)"
           fi
 
-          cat > review/GCP_REVIEW.md <<EOF
+          cat > review/GCP_REVIEW.md <<'EOF'
 # 🧩 GovOps Governance Change Proposal (GCP) Review Packet
 
-**PR #${{ steps.meta.outputs.number }}**  
-Title: *${{ steps.meta.outputs.title }}*  
-Author: @${{ steps.meta.outputs.author }}  
-URL: ${{ steps.meta.outputs.url }}
-
----
-
 ## ✅ Summary
-This packet consolidates governance-related context for GovOps reviewers.  
-GovOps does **not** enforce governance — it provides **advisory** review only.
+GovOps provides advisory governance review only.
 
----
+## ✅ Severity
+<SEVERITY>
 
-## ✅ Severity (from Xentred Classification)
-${SEVERITY}
-
----
-
-## ✅ Governance Impact Classification
-${CLASSIFICATION}
-
----
+## ✅ Classification
+<CLASSIFICATION>
 
 ## ✅ Reviewer Checklist
-
-### ✅ P0 — Contract / Boundary Change
-- [ ] GCP document present  
-- [ ] Phase‑2 boundary justification  
-- [ ] rexce contract updated  
-- [ ] Xcectua propagation considered  
-- [ ] SLO/performance impact checked  
-
-### ✅ P1 — Circuit / Workflow Change
-- [ ] Complies with rexce contract  
-- [ ] No shadow validator  
+- [ ] Contract / boundary impacts validated  
+- [ ] rexce contract changes confirmed  
+- [ ] No shadow validators  
 - [ ] PDR boundaries preserved  
 
-### ✅ P2 — Documentation
-- [ ] Governance impact minimal  
-- [ ] Text quality OK  
-
-### ✅ P3 — Metadata
-- [ ] No hidden governance effects  
-
----
-
-## ✅ Attached Materials
-(if present):
-- UNIFIED.diff  
-- FILES_CHANGED.txt  
-- CLASSIFICATION.md  
-- GCP.md  
 EOF
 
-      ######################################################################
-      # ✅ Upload packet
-      ######################################################################
-      - name: Upload GCP review packet
+          sed -i "s|<SEVERITY>|$SEVERITY|g" review/GCP_REVIEW.md
+          sed -i "s|<CLASSIFICATION>|$CLASSIFICATION|g" review/GCP_REVIEW.md
+
+      - name: Upload GCP Review Packet
         uses: actions/upload-artifact@v4
         with:
           name: govops-gcp-review-${{ github.run_id }}
           path: review/
           retention-days: 14
 
-      ######################################################################
-      # ✅ Post PR comment summary
-      ######################################################################
-      - name: Post GovOps comment to PR
+      - name: Post GovOps summary comment
         uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ steps.meta.outputs.number }}
           body: |
-            ### 🧩 GovOps Governance Review Packet Ready
-
-            A GCP Review Packet for **PR #${{ steps.meta.outputs.number }}** has been generated.
-
-            ✅ Severity classification  
-            ✅ Governance-impact classification  
-            ✅ Human review checklist  
-            ✅ Supporting diff materials  
-            ✅ Artifact attached  
-
-            GovOps does **not** enforce governance —  
-            it provides *advisory validation only*.  
-            Final enforcement occurs via **rexce** (validator)  
-            and **Xcectua** (Phase‑4 automation).
+            ### 🧩 GovOps GCP Review Packet Ready
+            Advisory-only review completed.
+``

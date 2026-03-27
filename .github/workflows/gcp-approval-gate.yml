@@ -6,21 +6,24 @@ on:
   workflow_dispatch:
 
 permissions:
-  pull-requests: write
   contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
   advisory-gate:
-    name: GovOps Advisory Approval Classification
+    name: Advisory GCP Classification
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout govops
-        uses: actions/checkout@v4
+      - name: Skip forks without write permission
+        if: github.event.pull_request.head.repo.fork == true && github.event.pull_request.maintainer_can_modify != true
+        run: |
+          echo "Skipping Advisory Gate — fork PR has no write permission."
+          exit 0
 
-      # ---------------------------------------------------------------
-      # ✅ Read severity classification input file if present
-      # ---------------------------------------------------------------
+      - uses: actions/checkout@v4
+
       - name: Load severity (best effort)
         id: severity
         run: |
@@ -30,23 +33,7 @@ jobs:
             echo "severity=Unknown" >> $GITHUB_OUTPUT
           fi
 
-      # ---------------------------------------------------------------
-      # ✅ Apply advisory labels
-      # ---------------------------------------------------------------
-      - name: Apply advisory label
-        uses: actions-ecosystem/action-add-labels@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          labels: |
-            ${{ steps.severity.outputs.severity == 'P0 (Critical — Requires GCP and rexce contract update)' && 'gcp/p0-critical' || '' }}
-            ${{ steps.severity.outputs.severity == 'P1 (High — Governance-circuit change)' && 'gcp/p1-high' || '' }}
-            ${{ steps.severity.outputs.severity == 'P2 (Medium — Governance documentation)' && 'gcp/p2-medium' || '' }}
-            ${{ steps.severity.outputs.severity == 'P3 (Low)' && 'gcp/p3-low' || '' }}
-
-      # ---------------------------------------------------------------
-      # ✅ Post advisory‑only comment
-      # ---------------------------------------------------------------
-      - name: Post advisory gate summary
+      - name: Post advisory gate comment
         uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -56,10 +43,8 @@ jobs:
 
             Severity classification: **${{ steps.severity.outputs.severity }}**
 
-            GovOps approval is **advisory only** and **does not block merging**.
+            GovOps approval is **advisory only**.  
             Final enforcement is performed exclusively by:
 
             ✅ rexce (Phase‑2 validator)  
-            ✅ Xcectua (Phase‑4 automation plane)
-
-            Labels have been applied accordingly.
+            ✅ Xcectua (Phase‑4 automation)
