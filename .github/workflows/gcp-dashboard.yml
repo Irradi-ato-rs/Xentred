@@ -1,0 +1,55 @@
+name: GovOps GCP Dashboard Generator
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # Every 6 hours
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  dashboard:
+    name: Generate GovOps Governance Dashboard
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate dashboard
+        id: dash
+        run: |
+          set -euo pipefail
+
+          echo "# 🧭 GovOps GCP Dashboard" > DASHBOARD.md
+          echo "" >> DASHBOARD.md
+          echo "Updated: $(date -u)" >> DASHBOARD.md
+          echo "" >> DASHBOARD.md
+
+          echo "## 🟥 P0 — Contract / Boundary Changes" >> DASHBOARD.md
+          gh pr list --label "gcp/p0-critical" --json number,title,author,state,url \
+            | jq -r '.[] | "- [PR #\(.number)](\(.url)) — \(.title) (by @\(.author))"' >> DASHBOARD.md
+          echo "" >> DASHBOARD.md
+
+          echo "## 🟧 P1 — Circuit / Workflow Changes" >> DASHBOARD.md
+          gh pr list --label "gcp/p1-high" --json number,title,author,state,url \
+            | jq -r '.[] | "- [PR #\(.number)](\(.url)) — \(.title) (by @\(.author))"' >> DASHBOARD.md
+          echo "" >> DASHBOARD.md
+
+          echo "## 🟨 P2 — Documentation" >> DASHBOARD.md
+          gh pr list --label "gcp/p2-medium" --json number,title,author,state,url \
+            | jq -r '.[] | "- [PR #\(.number)](\(.url)) — \(.title) (by @\(.author))"' >> DASHBOARD.md
+          echo "" >> DASHBOARD.md
+
+          echo "## 🟩 P3 — Low risk / Metadata" >> DASHBOARD.md
+          gh pr list --label "gcp/p3-low" --json number,title,author,state,url \
+            | jq -r '.\(.url) — \(.title) (by @\(.author))"' >> DASHBOARD.md
+
+      - name: Commit dashboard
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add DASHBOARD.md
+          git commit -m "Update GovOps GCP Dashboard" || echo "No changes"
+          git push || echo "No changes to push"
