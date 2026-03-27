@@ -1,0 +1,4 @@
+evidence/release
+evidence/sbom
+evidence/provenance
+evidence/inventory
