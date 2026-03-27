@@ -1,0 +1,46 @@
+name: GovOps Severity Annotator
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  annotate:
+    name: Severity-based PR Annotator
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Load classification severity
+        id: severity
+        run: |
+          if [[ -f SEVERITY.txt ]]; then
+            echo "severity=$(cat SEVERITY.txt)" >> $GITHUB_OUTPUT
+          else
+            echo "severity=Unknown" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Post annotation
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### 🔎 Governance Severity Annotation
+
+            **Severity:**
+            **${{ steps.severity.outputs.severity }}**
+
+            | Level | Meaning |
+            |-------|---------|
+            | 🟥 P0 | Contract / boundary change — GCP mandatory |
+            | 🟧 P1 | Circuit / workflow change — GovOps review required |
+            | 🟨 P2 | Documentation — advisory review |
+            | 🟩 P3 | Low-risk / metadata |
+
+            This annotation is **advisory only**.
+            Enforcement remains with **rexce** (validator) and **Xcectua** (Phase‑4 automation).

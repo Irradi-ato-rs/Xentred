@@ -1,0 +1,211 @@
+name: Generate Governance Change Proposal (GCP)
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gcp-packet:
+    name: Classify Governance Change & Generate GCP Packet
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Xentred
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      ######################################################################
+      # ✅ Capture PR metadata
+      ######################################################################
+      - name: Extract PR info
+        id: prmeta
+        run: |
+          set -euo pipefail
+          mkdir -p gcp
+          echo "title=${{ github.event.pull_request.title }}" >> $GITHUB_OUTPUT
+          echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          echo "author=${{ github.event.pull_request.user.login }}" >> $GITHUB_OUTPUT
+          echo "base=${{ github.event.pull_request.base.sha }}" >> $GITHUB_OUTPUT
+          echo "head=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
+
+      ######################################################################
+      # ✅ Capture diff
+      ######################################################################
+      - name: Generate file and diff lists
+        id: diff
+        run: |
+          set -euo pipefail
+          mkdir -p gcp
+
+          BASE="${{ steps.prmeta.outputs.base }}"
+          HEAD="${{ steps.prmeta.outputs.head }}"
+
+          git diff --name-only "$BASE" "$HEAD" > gcp/FILES_CHANGED.txt
+          git diff "$BASE" "$HEAD" > gcp/UNIFIED.diff
+
+          echo "files=$(cat gcp/FILES_CHANGED.txt | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
+      ######################################################################
+      # ✅ Governance Classification
+      ######################################################################
+      - name: Classify governance changes
+        id: classify
+        run: |
+          set -euo pipefail
+          mkdir -p gcp
+
+          CONTRACT=""
+          CIRCUIT=""
+          EVIDENCE=""
+          WORKFLOW=""
+          DOC=""
+          OTHER=""
+
+          while read -r f; do
+            case "$f" in
+              contract/*|contract-templates/*)
+                CONTRACT="$CONTRACT$f ";;
+              circuits/rer/pdr/evidence-dirs.txt)
+                EVIDENCE="$EVIDENCE$f ";;
+              circuits/rer/evidence/*|circuits/rer/workflows/*|circuits/rer/CODEOWNERS|circuits/rer/rer.lock.yml)
+                CIRCUIT="$CIRCUIT$f ";;
+              .github/workflows/*)
+                WORKFLOW="$WORKFLOW$f ";;
+              *.md|docs/*|README*|pdr/README.md)
+                DOC="$DOC$f ";;
+              *)
+                OTHER="$OTHER$f ";;
+            esac
+          done < gcp/FILES_CHANGED.txt
+
+          # Save classification table
+          cat > gcp/CLASSIFICATION.md <<EOF
+# Governance Diff Classification
+
+## ✅ Contract Changes
+${CONTRACT:-<none>}
+
+## ✅ Evidence-Boundary Changes
+${EVIDENCE:-<none>}
+
+## ✅ Circuit Template Changes
+${CIRCUIT:-<none>}
+
+## ✅ Workflow Changes
+${WORKFLOW:-<none>}
+
+## ✅ Documentation / Metadata
+${DOC:-<none>}
+
+## ✅ Other Changes
+${OTHER:-<none>}
+EOF
+
+      ######################################################################
+      # ✅ Severity Scoring (non-enforcing)
+      ######################################################################
+      - name: Score governance impact
+        id: severity
+        run: |
+          set -euo pipefail
+          mkdir -p gcp
+
+          SCORE="P3 (Low)"
+
+          # P0 — Contract or evidence-boundary change
+          if grep -q "contract/" gcp/FILES_CHANGED.txt || grep -q "circuits/rer/pdr/evidence-dirs.txt" gcp/FILES_CHANGED.txt; then
+            SCORE="P0 (Critical — Requires GCP and rexce contract update)"
+          # P1 — Circuit or workflow changes
+          elif grep -q "circuits/rer" gcp/FILES_CHANGED.txt || grep -q ".github/workflows" gcp/FILES_CHANGED.txt; then
+            SCORE="P1 (High — Governance-circuit change)"
+          # P2 — Documentation
+          elif grep -q ".md" gcp/FILES_CHANGED.txt; then
+            SCORE="P2 (Medium — Governance documentation)"
+          fi
+
+          echo "severity=$SCORE" >> $GITHUB_OUTPUT
+
+      ######################################################################
+      # ✅ Generate GCP Proposal Markdown
+      ######################################################################
+      - name: Generate GCP document
+        id: gcpdoc
+        run: |
+          set -euo pipefail
+          mkdir -p gcp
+
+          cat > gcp/GCP.md <<EOF
+# Governance Change Proposal (GCP)
+
+PR: #${{ steps.prmeta.outputs.number }}  
+Title: *${{ steps.prmeta.outputs.title }}*  
+Author: @${{ steps.prmeta.outputs.author }}  
+Severity: **${{ steps.severity.outputs.severity }}**
+
+---
+
+## ✅ Summary of Proposed Change
+Describe the governance change, motivation, and intended impact.
+
+---
+
+## ✅ Files Changed
+\`\`\`
+$(cat gcp/FILES_CHANGED.txt)
+\`\`\`
+
+---
+
+## ✅ Governance Classification
+$(cat gcp/CLASSIFICATION.md)
+
+---
+
+## ✅ Full Diff
+See attached artifact for \`UNIFIED.diff\`.
+
+---
+
+## ✅ Required Actions (if any)
+
+### ✅ For P0:
+- Requires formal GCP approval  
+- Requires rexce contract update  
+- Requires Xcectua propagation plan  
+
+### ✅ For P1:
+- Requires GovOps review  
+- Circuit template updates must remain Phase‑2 safe  
+
+### ✅ For P2:
+- Documentation only — minimal review  
+
+### ✅ For P3:
+- Low-risk, non-governance changes  
+
+---
+
+## ✅ Evidence
+All diffs & classification data stored in attached artifact.
+
+EOF
+
+      ######################################################################
+      # ✅ Upload GCP Packet Artifact
+      ######################################################################
+      - name: Upload GCP packet
+        uses: actions/upload-artifact@v4
+        with:
+          name: xentred-gcp-${{ github.run_id }}
+          path: gcp/
+          retention-days: 14
+
+      ######################################################################
+      - name: ✅ Completed
+        run: echo "GCP packet generated."
