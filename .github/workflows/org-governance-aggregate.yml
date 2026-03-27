@@ -1,32 +1,24 @@
-name: Org Governance Aggregation
+name: Org Governance Aggregation (read-only)
 
 on:
-  schedule:
-    - cron: "0 */6 * * *"
   workflow_dispatch:
-
-permissions:
-  contents: read
+  schedule:
+    - cron: "0 4 * * *"  # daily UTC, after RER Doctor
 
 jobs:
   aggregate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      ORG: Irradi-ato-rs
+      GH_TOKEN: ${{ secrets.ORG_ADMIN_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Run org governance aggregator
-        env:
-          ORG: "Irradi-ato-rs"
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Aggregate governance health
+        shell: bash
         run: |
           bash .github/scripts/org-governance-aggregate.sh
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: org-governance-aggregate-${{ github.run_id }}
-          path: summary.json
-          if-no-files-found: ignore

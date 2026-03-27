@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# org-governance-aggregate.sh (v0.2)
+# org-governance-aggregate.sh (v0.1)
 # Org-wide governance health aggregation (read-only)
-# Wraps RER Doctor per repo and aggregates results.
 #
-# Phase‑4 Safe • Read-Only • Deterministic • Operator-Grade
+# - Iterates all non-archived repos in the org
+# - Runs RER Doctor per repo (read-only)
+# - Aggregates OK / WARNING / VIOLATION counts
+# - Emits machine-readable JSON + human summary
+#
+# NEVER mutates repo state.
+# Phase-2 safe. Phase-3 observability only.
 
 set -euo pipefail
 
@@ -24,13 +29,11 @@ api() {
     "${GITHUB_API_URL%/}/$1"
 }
 
-echo "=== Org Governance Aggregation v0.2 ==="
+echo "=== Org Governance Aggregation v0.1 ==="
 echo "ORG=${ORG}"
 echo
 
-# -------------------------------------------------------------------
-# ✅ Fetch all non-archived repos in the org
-# -------------------------------------------------------------------
+# Enumerate all non-archived repos
 repos="$(api "orgs/${ORG}/repos?per_page=100&type=all" \
   | jq -r '.[] | select(.archived==false) | .name')"
 
@@ -39,9 +42,6 @@ warn=0
 violation=0
 details=()
 
-# -------------------------------------------------------------------
-# ✅ Aggregate each repo using RER Doctor (read-only)
-# -------------------------------------------------------------------
 for repo in ${repos}; do
   echo "--- Checking ${ORG}/${repo} ---"
 
@@ -50,15 +50,9 @@ for repo in ${repos}; do
   export REPOS_ALLOWLIST="${repo}"
   export GITHUB_REPOSITORY="${ORG}/${repo}"
 
-  #
-  # ✅ Critical Fix:
-  # Protect rer-doctor invocation from set -e, because rer-doctor
-  # intentionally returns non-zero codes (10 = WARNING, 20 = VIOLATION).
-  #
-  set +e
+  # Run RER Doctor for this repo
   bash .github/scripts/rer-doctor.sh >/dev/null 2>&1
   rc=$?
-  set -e
 
   case "${rc}" in
     0)
@@ -78,12 +72,10 @@ for repo in ${repos}; do
       ;;
   esac
 
-  details+=("$(jq -n --arg repo "${repo}" --arg status "${status}" '{repo:$repo,status:$status}')")
+  details+=( "$(jq -n --arg repo "${repo}" --arg status "${status}" '{repo:$repo,status:$status}')" )
 done
 
-# -------------------------------------------------------------------
-# ✅ Build JSON summary
-# -------------------------------------------------------------------
+# Build JSON summary
 summary="$(jq -n \
   --arg org "${ORG}" \
   --argjson ok "${ok}" \
@@ -92,7 +84,11 @@ summary="$(jq -n \
   --argjson repos "[${details[*]}]" \
   '{
     org:$org,
-    summary:{ok:$ok, warning:$warn, violation:$violation},
+    summary:{
+      ok:$ok,
+      warning:$warn,
+      violation:$violation
+    },
     repos:$repos
   }')"
 
@@ -106,8 +102,6 @@ echo
 echo "JSON Summary:"
 echo "${summary}" | jq -S .
 
-# -------------------------------------------------------------------
-# ✅ Phase‑4 Correct Exit Behavior
-# WARNINGs do NOT cause non-zero exit. Only VIOLATION does.
-# -------------------------------------------------------------------
+# Exit code is informational only
+# (Non-blocking; useful for downstream automation)
 [[ "${violation}" -gt 0 ]] && exit 20 || exit 0
