@@ -16,14 +16,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Skip forks without write permission
-        if: github.event.pull_request.head.repo.fork == true && github.event.pull_request.maintainer_can_modify != true
+      - name: Skip if token cannot write to this PR
+        if: >
+          github.event.pull_request.head.repo.fork == true &&
+          github.event.pull_request.maintainer_can_modify != true
         run: |
-          echo "Skipping GCP Reviewer — fork PR has no write permission."
+          echo "Skipping GCP Reviewer — fork PR does not grant write permissions."
           exit 0
 
-      - name: Checkout govops
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -36,62 +37,29 @@ jobs:
           echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
           echo "url=${{ github.event.pull_request.html_url }}" >> $GITHUB_OUTPUT
 
-      - name: Download governance diff artifact (best effort)
-        uses: actions/download-artifact@v4
-        with:
-          name: xentred-governance-diff-${{ github.run_id }}
-        continue-on-error: true
-
-      - name: Generate GovOps GCP Review Packet
+      - name: Load classification + severity
         run: |
           mkdir -p review
+          [[ -f CLASSIFICATION.md ]] && cp CLASSIFICATION.md review/CLASSIFICATION.md || echo "No classification" > review/CLASSIFICATION.md
+          [[ -f SEVERITY.txt ]] && cp SEVERITY.txt review/SEVERITY.txt || echo "Unknown" > review/SEVERITY.txt
 
-          CLASSIFICATION="No classification artifact found"
-          if [[ -f CLASSIFICATION.md ]]; then
-            CLASSIFICATION="$(cat CLASSIFICATION.md)"
-          fi
-
-          SEVERITY="Unknown"
-          if [[ -f SEVERITY.txt ]]; then
-            SEVERITY="$(cat SEVERITY.txt)"
-          fi
-
-          cat > review/GCP_REVIEW.md <<'EOF'
-# 🧩 GovOps Governance Change Proposal (GCP) Review Packet
-
-## ✅ Summary
-GovOps provides advisory governance review only.
-
-## ✅ Severity
-<SEVERITY>
-
-## ✅ Classification
-<CLASSIFICATION>
-
-## ✅ Reviewer Checklist
-- [ ] Contract / boundary impacts validated  
-- [ ] rexce contract changes confirmed  
-- [ ] No shadow validators  
-- [ ] PDR boundaries preserved  
-
-EOF
-
-          sed -i "s|<SEVERITY>|$SEVERITY|g" review/GCP_REVIEW.md
-          sed -i "s|<CLASSIFICATION>|$CLASSIFICATION|g" review/GCP_REVIEW.md
-
-      - name: Upload GCP Review Packet
+      - name: Upload review packet
         uses: actions/upload-artifact@v4
         with:
           name: govops-gcp-review-${{ github.run_id }}
           path: review/
           retention-days: 14
 
-      - name: Post GovOps summary comment
+      - name: Post summary comment
         uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ steps.meta.outputs.number }}
           body: |
             ### 🧩 GovOps GCP Review Packet Ready
-            Advisory-only review completed.
-``
+
+            Severity: **$(cat review/SEVERITY.txt)**  
+            Classification summary attached (artifact).
+
+            GovOps review is **advisory only**.  
+            Enforcement: **rexce** (Phase‑2) + **Xcectua** (Phase‑4).

@@ -6,17 +6,28 @@ on:
   workflow_dispatch:
 
 permissions:
-  pull-requests: write
   contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
   annotate:
-    name: Severity-based PR Annotator
+    name: Severity Annotator
     runs-on: ubuntu-latest
 
     steps:
-      - name: Load classification severity
-        id: severity
+      - name: Skip if token cannot write to this PR
+        if: >
+          github.event.pull_request.head.repo.fork == true &&
+          github.event.pull_request.maintainer_can_modify != true
+        run: |
+          echo "Skipping severity annotation — fork PR has no write permissions."
+          exit 0
+
+      - uses: actions/checkout@v4
+
+      - name: Load severity
+        id: sev
         run: |
           if [[ -f SEVERITY.txt ]]; then
             echo "severity=$(cat SEVERITY.txt)" >> $GITHUB_OUTPUT
@@ -32,15 +43,7 @@ jobs:
           body: |
             ### 🔎 Governance Severity Annotation
 
-            **Severity:**
-            **${{ steps.severity.outputs.severity }}**
+            Severity: **${{ steps.sev.outputs.severity }}**
 
-            | Level | Meaning |
-            |-------|---------|
-            | 🟥 P0 | Contract / boundary change — GCP mandatory |
-            | 🟧 P1 | Circuit / workflow change — GovOps review required |
-            | 🟨 P2 | Documentation — advisory review |
-            | 🟩 P3 | Low-risk / metadata |
-
-            This annotation is **advisory only**.
-            Enforcement remains with **rexce** (validator) and **Xcectua** (Phase‑4 automation).
+            Advisory: GovOps does not enforce governance.  
+            Enforcement occurs via **rexce** + **Xcectua**.

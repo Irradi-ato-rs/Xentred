@@ -1,35 +1,49 @@
-name: GovOps GCP Dashboard Generator
+name: GovOps Severity Annotator
 
 on:
-  schedule:
-    - cron: "0 */6 * * *"
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pull-requests: write
+  issues: write
 
 jobs:
-  dashboard:
+  annotate:
+    name: Severity Annotator
     runs-on: ubuntu-latest
 
     steps:
+      - name: Skip if token cannot write to this PR
+        if: >
+          github.event.pull_request.head.repo.fork == true &&
+          github.event.pull_request.maintainer_can_modify != true
+        run: |
+          echo "Skipping severity annotation — fork PR has no write permissions."
+          exit 0
+
       - uses: actions/checkout@v4
 
-      - name: Generate dashboard
+      - name: Load severity
+        id: sev
         run: |
-          echo "# 🧭 GovOps GCP Dashboard" > DASHBOARD.md
-          echo "Updated: $(date -u)" >> DASHBOARD.md
-          echo "" >> DASHBOARD.md
+          if [[ -f SEVERITY.txt ]]; then
+            echo "severity=$(cat SEVERITY.txt)" >> $GITHUB_OUTPUT
+          else
+            echo "severity=Unknown" >> $GITHUB_OUTPUT
+          fi
 
-          echo "## P0 (Critical)" >> DASHBOARD.md
-          gh pr list --label "gcp/p0-critical" --json number,title,url,author \
-            | jq -r '.[] | "* [" + .title + "](" + .url + ") by @" + .author + ""' >> DASHBOARD.md
-          echo "" >> DASHBOARD.md
+      - name: Post annotation
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### 🔎 Governance Severity Annotation
 
-      - name: Commit dashboard
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add DASHBOARD.md
-          git commit -m "Update GovOps GCP Dashboard" || true
-          git push || true
+            Severity: **${{ steps.sev.outputs.severity }}**
+
+            Advisory: GovOps does not enforce governance.  
+            Enforcement occurs via **rexce** + **Xcectua**.

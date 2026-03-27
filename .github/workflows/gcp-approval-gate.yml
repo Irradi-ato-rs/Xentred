@@ -16,16 +16,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Skip forks without write permission
-        if: github.event.pull_request.head.repo.fork == true && github.event.pull_request.maintainer_can_modify != true
+      - name: Skip if token cannot write to this PR
+        if: >
+          github.event.pull_request.head.repo.fork == true &&
+          github.event.pull_request.maintainer_can_modify != true
         run: |
-          echo "Skipping Advisory Gate — fork PR has no write permission."
+          echo "Skipping comment — fork PR does not grant write permissions."
           exit 0
 
       - uses: actions/checkout@v4
 
       - name: Load severity (best effort)
-        id: severity
+        id: sev
         run: |
           if [[ -f SEVERITY.txt ]]; then
             echo "severity=$(cat SEVERITY.txt)" >> $GITHUB_OUTPUT
@@ -33,7 +35,7 @@ jobs:
             echo "severity=Unknown" >> $GITHUB_OUTPUT
           fi
 
-      - name: Post advisory gate comment
+      - name: Post advisory comment
         uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -41,10 +43,10 @@ jobs:
           body: |
             ### 🛂 GovOps Advisory Approval Gate
 
-            Severity classification: **${{ steps.severity.outputs.severity }}**
+            Severity classification: **${{ steps.sev.outputs.severity }}**
 
-            GovOps approval is **advisory only**.  
-            Final enforcement is performed exclusively by:
+            GovOps approval is **advisory only**  
+            Final enforcement is handled by:
 
             ✅ rexce (Phase‑2 validator)  
             ✅ Xcectua (Phase‑4 automation)
