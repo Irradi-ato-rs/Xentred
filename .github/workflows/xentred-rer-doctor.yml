@@ -6,17 +6,24 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 jobs:
   doctor:
+    name: RER Doctor (internal)
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout PR head
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Run RER Doctor
+      - name: Run RER doctor
         run: bash .github/scripts/rer-doctor.sh
+
+      - name: Upload doctor results (if any)
+        uses: actions/upload-artifact@v4
+        with:
+          name: rer-doctor-${{ github.run_id }}
+          path: rer-doctor-output/
+          if-no-files-found: ignore

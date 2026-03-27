@@ -6,23 +6,23 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 jobs:
   diff:
+    name: Classify governance diff
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout PR head
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Run governance diff
+      - name: Run diff classifier
         run: bash .github/scripts/gov-diff.sh
 
-      - name: Upload diff packet
+      - name: Upload diff artifact
         uses: actions/upload-artifact@v4
         with:
-          name: xentred-governance-diff-${{ github.run_id }}
+          name: governance-diff-${{ github.run_id }}
           path: govdiff/

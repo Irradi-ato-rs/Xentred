@@ -6,14 +6,15 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
 
 jobs:
   gcp:
+    name: Build GCP packet
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout PR head
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
@@ -23,5 +24,5 @@ jobs:
       - name: Upload GCP packet
         uses: actions/upload-artifact@v4
         with:
-          name: xentred-gcp-${{ github.run_id }}
+          name: gcp-packet-${{ github.run_id }}
           path: gcp/
