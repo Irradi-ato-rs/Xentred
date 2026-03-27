@@ -1,0 +1,53 @@
+name: Governance Gate (RER)
+on:
+  workflow_dispatch:
+
+jobs:
+  governance-gate:
+    name: Validate Release Evidence (RER)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # --- PDR Manifest Validation ------------------------------------------
+      - name: Validate PDR Evidence Directory Manifest
+        id: pdr_dirs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! -f "pdr/evidence-dirs.txt" ]]; then
+            echo "❌ ERROR: Missing required PDR manifest: pdr/evidence-dirs.txt"
+            exit 2
+          fi
+
+          echo "✅ Found PDR evidence manifest."
+          {
+            echo "dirs=$(cat pdr/evidence-dirs.txt | tr '\n' ' ')"
+          } >> "$GITHUB_OUTPUT"
+
+      # --- Deterministic Evidence Hashing -----------------------------------
+      - name: Hash Evidence Directories
+        id: pdr_hash
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p pdr/hashes
+          : > pdr/hashes/evidence.sha256
+
+          for dir in ${{ steps.pdr_dirs.outputs.dirs }}; do
+            if [[ ! -d "$dir" ]]; then
+              echo "❌ Missing required evidence directory: $dir"
+              exit 3
+            fi
+
+            echo "Hashing $dir ..."
+            find "$dir" -type f -exec sha256sum {} \; >> pdr/hashes/evidence.sha256
+          done
+
+          echo "✅ Evidence hashing complete."
