@@ -4,7 +4,7 @@ on:
   pull_request_target:
     branches: ["main"]
   push:
-    branches: ["main"]  # keep push validation for direct commits
+    branches: ["main"]
 
 permissions:
   contents: read
@@ -12,14 +12,4 @@ permissions:
 jobs:
   validate:
     name: Run canonical governance validator
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Xentred
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Run rexce validator
-        uses: Irradi-ato-rs/rexce/.github/workflows/rexce-validation.yml@main
+    uses: Irradi-ato-rs/rexce/.github/workflows/rexce-validation.yml@main
