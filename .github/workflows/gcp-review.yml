@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   gcp-review:
@@ -20,8 +21,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ✅ Skip forks without write permission
+      - name: Skip forks without write permission
+        if: github.event.pull_request.head.repo.fork == true && github.event.pull_request.maintainer_can_modify != true
+        run: |
+          echo "Skipping GovOps GCP Reviewer because fork PR has no write permission."
+          exit 0
+
       ######################################################################
-      # ✅ Capture PR metadata for human review context
+      # ✅ Capture PR metadata
       ######################################################################
       - name: Capture PR metadata
         id: meta
@@ -36,7 +44,7 @@ jobs:
           echo "head=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
 
       ######################################################################
-      # ✅ Pull in Xentred governance diff artifacts (if present)
+      # ✅ Try to load artifacts (non-blocking)
       ######################################################################
       - name: Download governance diff artifact (best effort)
         uses: actions/download-artifact@v4
@@ -46,11 +54,10 @@ jobs:
 
       - name: Fallback artifact discovery
         if: failure()
-        run: |
-          echo "No prior governance diff artifact found — reviewer must evaluate manually."
+        run: echo "No prior governance diff artifact found — reviewer must evaluate manually."
 
       ######################################################################
-      # ✅ Create reviewer guidance packet (non‑enforcing)
+      # ✅ Build review packet
       ######################################################################
       - name: Generate GovOps GCP Review Packet
         id: packet
@@ -79,8 +86,8 @@ URL: ${{ steps.meta.outputs.url }}
 ---
 
 ## ✅ Summary
-This packet consolidates all governance‑related context for GovOps reviewers.  
-GovOps does **not** enforce governance — it provides *advisory‑only* human review.
+This packet consolidates governance-related context for GovOps reviewers.  
+GovOps does **not** enforce governance — it provides **advisory** review only.
 
 ---
 
@@ -94,42 +101,39 @@ ${CLASSIFICATION}
 
 ---
 
-## ✅ Required Human Review Checklist
+## ✅ Reviewer Checklist
 
-### ✅ For P0 — Contract / Boundary Change
-- [ ] GCP document is present and complete  
-- [ ] Phase‑2 boundary change justification is clear  
-- [ ] Required rexce contract updates exist  
-- [ ] Xcectua propagation implications are understood  
-- [ ] Performance / SLO impacts evaluated  
+### ✅ P0 — Contract / Boundary Change
+- [ ] GCP document present  
+- [ ] Phase‑2 boundary justification  
+- [ ] rexce contract updated  
+- [ ] Xcectua propagation considered  
+- [ ] SLO/performance impact checked  
 
-### ✅ For P1 — Circuit / Workflow Change
+### ✅ P1 — Circuit / Workflow Change
 - [ ] Complies with rexce contract  
-- [ ] Template changes remain Phase‑2 safe  
-- [ ] No shadow validator logic introduced  
-- [ ] PDR boundaries fully respected  
+- [ ] No shadow validator  
+- [ ] PDR boundaries preserved  
 
-### ✅ For P2 — Documentation
-- [ ] Governance impact is minimal or none  
-- [ ] Documentation clarity validated  
+### ✅ P2 — Documentation
+- [ ] Governance impact minimal  
+- [ ] Text quality OK  
 
-### ✅ For P3 — Meta / Other
-- [ ] No hidden governance impacts  
+### ✅ P3 — Metadata
+- [ ] No hidden governance effects  
 
 ---
 
 ## ✅ Attached Materials
-
-Includes (if available):
-- \`UNIFIED.diff\`
-- \`FILES_CHANGED.txt\`
-- \`CLASSIFICATION.md\`
-- \`GCP.md\`
-
+(if present):
+- UNIFIED.diff  
+- FILES_CHANGED.txt  
+- CLASSIFICATION.md  
+- GCP.md  
 EOF
 
       ######################################################################
-      # ✅ Upload GovOps Review Packet
+      # ✅ Upload packet
       ######################################################################
       - name: Upload GCP review packet
         uses: actions/upload-artifact@v4
@@ -139,7 +143,7 @@ EOF
           retention-days: 14
 
       ######################################################################
-      # ✅ Post PR comment with summary
+      # ✅ Post PR comment summary
       ######################################################################
       - name: Post GovOps comment to PR
         uses: peter-evans/create-or-update-comment@v4
@@ -152,13 +156,12 @@ EOF
             A GCP Review Packet for **PR #${{ steps.meta.outputs.number }}** has been generated.
 
             ✅ Severity classification  
-            ✅ Governance‑impact classification  
+            ✅ Governance-impact classification  
             ✅ Human review checklist  
-            ✅ All supporting diff materials  
-            ✅ Artifact attached to this workflow run  
+            ✅ Supporting diff materials  
+            ✅ Artifact attached  
 
             GovOps does **not** enforce governance —  
             it provides *advisory validation only*.  
-            Final enforcement always occurs through **rexce** and **Xcectua Phase‑4 automation**.
-
-            Please proceed with human review and record decisions as appropriate.
+            Final enforcement occurs via **rexce** (validator)  
+            and **Xcectua** (Phase‑4 automation).

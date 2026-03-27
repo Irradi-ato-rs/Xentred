@@ -3,7 +3,7 @@ name: Governance Flow Visualizer
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0 * * *"   # Daily
+    - cron: "0 0 * * *"
 
 permissions:
   contents: write
@@ -17,7 +17,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install graphviz
-        run: sudo apt-get update && sudo apt-get install -y graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
 
       - name: Generate ASCII diagram
         run: |
@@ -26,8 +28,8 @@ jobs:
 │        rexce (P2)         │
 │ Canonical Validator       │
 │ - contract                │
-│ - policies (OPA)         │
-│ - invariants             │
+│ - policies (OPA)          │
+│ - invariants              │
 └─────────────┬────────────┘
               │
               ▼
@@ -63,9 +65,9 @@ jobs:
               ▼
 ┌──────────────────────────┐
 │        GovOps (Advisory)  │
-│ - GCP review             │
-│ - dashboards            │
-│ - diff packets          │
+│ - GCP review              │
+│ - dashboards              │
+│ - diff packets            │
 └──────────────────────────┘
 EOF
 
